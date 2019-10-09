@@ -19,6 +19,7 @@
     os_kibana_package:
       Debian: opendistroforelasticsearch-kibana
       FreeBSD: "{{ __kibana_package }}"
+      OpenBSD: "{{ __kibana_package }}"
     kibana_package: "{{ os_kibana_package[ansible_os_family] }}"
 
     kibana_listen_host: localhost
@@ -26,6 +27,13 @@
 
     os_kibana_config:
       FreeBSD:
+        # XXX kibana version 6.x
+        server.port: "{{ kibana_listen_port }}"
+        server.host: 0.0.0.0
+        kibana.index: .kibana
+        logging.dest: "{{ kibana_log_dir }}/kibana.log"
+        elasticsearch.url: http://localhost:9200
+      OpenBSD:
         # XXX kibana version 6.x
         server.port: "{{ kibana_listen_port }}"
         server.host: 0.0.0.0
@@ -41,6 +49,7 @@
         elasticsearch.hosts: ["http://localhost:9200"]
     kibana_config: "{{ os_kibana_config[ansible_os_family] }}"
     os_kibana_flags:
+      OpenBSD: ""
       FreeBSD: |
         kibana_user="{{ kibana_user }}"
         kibana_group="{{ kibana_group }}"
