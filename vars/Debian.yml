@@ -1,5 +1,5 @@
 ---
-__kibana_package: opendistroforelasticsearch-kibana
+__kibana_package: kibana
 __kibana_config_dir: /etc/kibana
 __kibana_service: kibana
 __kibana_user: kibana
