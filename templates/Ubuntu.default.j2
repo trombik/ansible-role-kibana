@@ -1,11 +1,3 @@
 # Managed by ansible
-user="{{ kibana_user }}"
-group="{{ kibana_group }}"
-chroot="/"
-chdir="/"
-nice=""
-args="-c {{ kibana_config_path }}"
 
-{% for k, v in kibana_default_ubuntu | dictsort() %}
-{{ k }}="{{ v }}"
-{% endfor %}
+{{ kibana_flags }}

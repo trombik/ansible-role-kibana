@@ -1,21 +1,13 @@
 ---
 # defaults file for ansible-role-kibana
-kibana_package_name: "{{ __kibana_package_name }}"
-kibana_service_name: "{{ __kibana_service_name }}"
+kibana_package: "{{ __kibana_package }}"
+kibana_service: "{{ __kibana_service }}"
 kibana_user: "{{ __kibana_user }}"
 kibana_group: "{{ __kibana_group }}"
 kibana_config_dir: "{{ __kibana_config_dir }}"
-kibana_config_path: "{{ kibana_config_dir }}/kibana.yml"
-
-kibana_config_default:
-  server.port: 5601
-  server.host: 0.0.0.0
-  kibana.index: .kibana
-  logging.dest: /var/log/kibana/kibana.log
-  elasticsearch.url: http://localhost:9200
-
+kibana_config_file: "{{ kibana_config_dir }}/kibana.yml"
+kibana_log_dir: /var/log/kibana
+kibana_listen_host: ""
+kibana_listen_port: ""
 kibana_config: {}
-
-kibana_default_ubuntu:
-  KILL_ON_STOP_TIMEOUT: "0"
-kibana_default_redhat: {}
+kibana_flags: ""

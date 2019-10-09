@@ -1,8 +1,8 @@
 ---
 
-- name: Ensure kibana is installed
+- name: Install kibana_package
   apt:
-    name: "{{ kibana_package_name }}"
+    name: "{{ kibana_package }}"
     state: present
 
 - name: Patch kibana.service
@@ -14,6 +14,7 @@
   notify: Restart kibana
   when:
     - "ansible_distribution_version | version_compare('16.04', '>=')"
+    - false
 
 - name: Restart systemd
   command: systemctl daemon-reload

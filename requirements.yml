@@ -1,4 +1,6 @@
 ---
 
-- name: reallyenglish.apt-repo
-- name: reallyenglish.redhat-repo
+- name: trombik.apt_repo
+- name: trombik.redhat_repo
+- name: trombik.java
+- name: trombik.opendistroforelasticsearch
