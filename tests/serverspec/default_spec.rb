@@ -36,7 +36,12 @@ describe file(kibana_config_path) do
   it { should be_file }
   its(:content_as_yaml) { should include("server.port" => 5601) }
   its(:content_as_yaml) { should include("server.host" => "0.0.0.0") }
-  its(:content_as_yaml) { should include("elasticsearch.hosts" => ["http://localhost:9200"]) }
+  case os[:family]
+  when "ubuntu"
+    its(:content_as_yaml) { should include("elasticsearch.hosts" => ["http://localhost:9200"]) }
+  when "freebsd"
+    its(:content_as_yaml) { should include("elasticsearch.url" => "http://localhost:9200") }
+  end
   its(:content_as_yaml) { should include("kibana.index" => ".kibana") }
   its(:content_as_yaml) { should include("logging.dest" => log_file) }
 end
