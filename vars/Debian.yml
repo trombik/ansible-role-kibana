@@ -1,6 +1,6 @@
 ---
-__kibana_package_name: kibana
-__kibana_config_dir: /etc
-__kibana_service_name: kibana
+__kibana_package: opendistroforelasticsearch-kibana
+__kibana_config_dir: /etc/kibana
+__kibana_service: kibana
 __kibana_user: kibana
 __kibana_group: kibana

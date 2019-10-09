@@ -3,11 +3,11 @@
 
 - name: Restart kibana
   service:
-    name: "{{ kibana_service_name }}"
+    name: "{{ kibana_service }}"
     state: restarted
   notify: Wait for kibana to start
 
 - name: Wait for kibana to start
   wait_for:
-    host: "{% if kibana_config_merged['server.host'] == '0.0.0.0' %}localhost{% else %}{{ kibana_config_merged['server.host'] }}{% endif %}"
-    port: "{{ kibana_config_merged['server.port'] }}"
+    host: "{{ kibana_listen_host }}"
+    port: "{{ kibana_listen_port }}"

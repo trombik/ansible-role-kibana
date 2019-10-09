@@ -1,9 +1,9 @@
 require "spec_helper"
 require "serverspec"
 
-kibana_package_name = "kibana"
+kibana_package_name = "opendistroforelasticsearch-kibana"
 kibana_service_name = "kibana"
-kibana_config_path  = "/etc/kibana.yml"
+kibana_config_path  = "/etc/kibana/kibana.yml"
 kibana_user_name    = "kibana"
 kibana_user_group   = "kibana"
 default_user = "root"
@@ -36,7 +36,7 @@ describe file(kibana_config_path) do
   it { should be_file }
   its(:content_as_yaml) { should include("server.port" => 5601) }
   its(:content_as_yaml) { should include("server.host" => "0.0.0.0") }
-  its(:content_as_yaml) { should include("elasticsearch.url" => "http://localhost:9200") }
+  its(:content_as_yaml) { should include("elasticsearch.hosts" => ["http://localhost:9200"]) }
   its(:content_as_yaml) { should include("kibana.index" => ".kibana") }
   its(:content_as_yaml) { should include("logging.dest" => log_file) }
 end
@@ -78,12 +78,8 @@ when "ubuntu"
     it { should be_owned_by default_user }
     it { should be_grouped_into default_group }
     it { should be_mode 644 }
-    its(:content) { should match(/^user="#{kibana_user_name}"$/) }
-    its(:content) { should match(/^group="#{kibana_user_group}"$/) }
-    its(:content) { should match(%r{^chroot="/"$}) }
-    its(:content) { should match(%r{^chdir="/"$}) }
-    its(:content) { should match(/^nice=""$/) }
-    its(:content) { should match(/^KILL_ON_STOP_TIMEOUT="0"$/) }
+    its(:content) { should match(/Managed by ansible/) }
+    its(:content) { should match(/KILL_ON_STOP_TIMEOUT=1/) }
   end
 when "freebsd"
   describe file("/etc/rc.conf.d/kibana") do

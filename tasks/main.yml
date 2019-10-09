@@ -1,43 +1,43 @@
 ---
 # tasks file for ansible-role-kibana
 
-- include_vars: "{{ ansible_os_family }}.yml"
+- name: Include vars/ansible_os_family.yml
+  include_vars: "{{ ansible_os_family }}.yml"
 
-- set_fact:
-    kibana_config_merged: "{{ kibana_config_default | combine(kibana_config, recursive = True) }}"
+- name: "Include install-{{ ansible_os_family }}.yml"
+  include: "install-{{ ansible_os_family }}.yml"
 
-- include: "install-{{ ansible_os_family }}.yml"
-
-- include: "configure-{{ ansible_os_family }}.yml"
+- name: "Include configure-{{ ansible_os_family }}.yml"
+  include: "configure-{{ ansible_os_family }}.yml"
 
 - name: Create log directory
   file:
-    path: "{{ kibana_config_merged['logging.dest'] | dirname }}"
+    path: "{{ kibana_log_dir }}"
     owner: "{{ kibana_user }}"
     group: "{{ kibana_group }}"
     state: directory
 
 - name: Configure kibana.yml
   template:
-    src: "kibana.yml.j2"
-    dest: "{{ kibana_config_path }}"
+    src: kibana.yml.j2
+    dest: "{{ kibana_config_file }}"
     mode: 0644
   notify: Restart kibana
 
 - name: Enable kibana
   service:
-    name: "{{ kibana_service_name }}"
+    name: "{{ kibana_service }}"
     enabled: yes
 
 - name: Start kibana
   service:
-    name: "{{ kibana_service_name }}"
+    name: "{{ kibana_service }}"
     state: started
   register: register_kibana_start
 
 - name: Wait for kibana to start in task
   wait_for:
-    host: "{% if kibana_config_merged['server.host'] == '0.0.0.0' %}localhost{% else %}{{ kibana_config_merged['server.host'] }}{% endif %}"
-    port: "{{ kibana_config_merged['server.port'] }}"
+    host: "{{ kibana_listen_host }}"
+    port: "{{ kibana_listen_port }}"
   when:
     - register_kibana_start.changed
