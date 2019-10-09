@@ -15,6 +15,7 @@ when "openbsd"
   kibana_user_name = "_kibana"
   kibana_user_group = "_kibana"
   default_group = "wheel"
+  kibana_package_name = "kibana"
 when "freebsd"
   default_group = "wheel"
   kibana_user_group = "www"
@@ -31,7 +32,12 @@ end
 describe file(kibana_config_path) do
   it { should exist }
   it { should be_owned_by default_user }
-  it { should be_grouped_into default_group }
+  case os[:family]
+  when "openbsd"
+    it { should be_grouped_into kibana_user_group }
+  else
+    it { should be_grouped_into default_group }
+  end
   it { should be_mode 644 }
   it { should be_file }
   its(:content_as_yaml) { should include("server.port" => 5601) }
@@ -51,7 +57,12 @@ describe file(log_directory) do
   it { should be_directory }
   it { should be_owned_by kibana_user_name }
   it { should be_grouped_into kibana_user_group }
-  it { should be_mode 755 }
+  case os[:family]
+  when "openbsd"
+    it { should be_mode 770 }
+  else
+    it { should be_mode 755 }
+  end
 end
 
 describe file(log_file) do
