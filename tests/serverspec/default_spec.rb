@@ -86,6 +86,7 @@ when "redhat"
     its(:content) { should match(%r{^chroot="/"$}) }
     its(:content) { should match(%r{^chdir="/"$}) }
     its(:content) { should match(/^nice=""$/) }
+    its(:content) { should match(/KILL_ON_STOP_TIMEOUT=1/) }
   end
 when "ubuntu"
   describe file("/etc/default/kibana") do

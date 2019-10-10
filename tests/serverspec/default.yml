@@ -15,11 +15,22 @@
       - deb [arch=amd64] https://d3g5vo6xdbdb9a.cloudfront.net/apt stable main
       - deb https://artifacts.elastic.co/packages/oss-7.x/apt stable main
     apt_repo_enable_apt_transport_https: yes
-
+    redhat_repo:
+      elasticsearch7:
+        baseurl: https://artifacts.elastic.co/packages/oss-7.x/yum
+        gpgkey: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        gpgcheck: yes
+        enabled: yes
+      opendistroforelasticsearch:
+        baseurl: https://d3g5vo6xdbdb9a.cloudfront.net/yum/noarch/
+        gpgkey: https://d3g5vo6xdbdb9a.cloudfront.net/GPG-KEY-opendistroforelasticsearch
+        enabled: yes
+        gpgcheck: yes
     os_kibana_package:
       Debian: opendistroforelasticsearch-kibana
       FreeBSD: "{{ __kibana_package }}"
       OpenBSD: "{{ __kibana_package }}"
+      RedHat: opendistroforelasticsearch-kibana
     kibana_package: "{{ os_kibana_package[ansible_os_family] }}"
 
     kibana_listen_host: localhost
@@ -47,6 +58,13 @@
         kibana.index: .kibana
         logging.dest: "{{ kibana_log_dir }}/kibana.log"
         elasticsearch.hosts: ["http://localhost:9200"]
+      RedHat:
+        # XXX kibana version 7.x
+        server.port: "{{ kibana_listen_port }}"
+        server.host: 0.0.0.0
+        kibana.index: .kibana
+        logging.dest: "{{ kibana_log_dir }}/kibana.log"
+        elasticsearch.hosts: ["http://localhost:9200"]
     kibana_config: "{{ os_kibana_config[ansible_os_family] }}"
     os_kibana_flags:
       OpenBSD: ""
@@ -62,5 +80,11 @@
         chdir="/"
         nice=""
         KILL_ON_STOP_TIMEOUT=1
-      RedHat: ""
+      RedHat: |
+        user="kibana"
+        group="kibana"
+        chroot="/"
+        chdir="/"
+        nice=""
+        KILL_ON_STOP_TIMEOUT=1
     kibana_flags: "{{ os_kibana_flags[ansible_os_family] }}"
