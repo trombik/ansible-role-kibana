@@ -151,7 +151,6 @@
       -Djava.security.policy=file:///usr/share/elasticsearch/plugins/opendistro_performance_analyzer/pa_config/es_security.policy
     opendistroforelasticsearch_config:
       opendistro_security.disabled: false
-      opendistro_security.ssl.http.enabled: false
       discovery.type: single-node
       network.publish_host: ["10.0.2.15"]
       path.data: "{{ opendistroforelasticsearch_db_dir }}"
