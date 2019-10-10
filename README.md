@@ -10,56 +10,25 @@ None
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `kibana_package_name` | package name | `{{ __kibana_package_name }}` |
-| `kibana_service_name` | service name | `{{ __kibana_service_name }}` |
+| `kibana_package` | package name of `kibana` | `{{ __kibana_package }}` |
+| `kibana_service` | service name of `kibana` | `{{ __kibana_service }}` |
 | `kibana_user` | user name of `kibana` | `{{ __kibana_user }}` |
 | `kibana_group` | group name of `kibana` | `{{ __kibana_group }}` |
-| `kibana_config_dir` | path to directory where `kibana.yml` resides | `{{ __kibana_config_dir }}` |
-| `kibana_config_path` | path to `kibana.yml` | `{{ __kibana_config_dir }}/kibana.yml` |
-| `kibana_config_default` | dict of default values of `kibana.yml` | See below |
-| `kibana_config` | dict that overrides `kibana_config_default` | `{}` |
-| `kibana_default_ubuntu` | dict of settings in `/etc/default/kibana`. see below (Ubuntu only) | `{"KILL_ON_STOP_TIMEOUT"=>"0"}` |
-| `kibana_default_redhat` | dict of settings in `/etc/sysconfig/kibana`. see below (Red Hat only) | `{}` |
-
-## `kibana_config_default`
-
-```yaml
-kibana_config_default:
-  server.port: 5601
-  server.host: 0.0.0.0
-  kibana.index: .kibana
-  logging.dest: /var/log/kibana/kibana.log
-  elasticsearch.url: http://localhost:9200
-```
-
-### `kibana_default_ubuntu`
-
-A dict of variables and values in `/etc/default/kibana`.
-
-| Key | Value |
-|-----|-------|
-| variable name | the value |
-
-Given the following YAML,
-
-```yaml
-kibana_default_ubuntu:
- FOO: bar
-```
-
-The role generates `/etc/default/kibana`
-
-```
-FOO="bar"
-```
+| `kibana_config_dir` | path to configuration directory | `{{ __kibana_config_dir }}` |
+| `kibana_config_file` | path to `kibana.yml` | `{{ kibana_config_dir }}/kibana.yml` |
+| `kibana_log_dir` | path to log directory | `/var/log/kibana` |
+| `kibana_listen_host` | host name or IP address of listening port of `kibana` | `""` |
+| `kibana_listen_port` | port number of listening port of `kibana` | `""` |
+| `kibana_config` | content of `kibana.yml` | `{}` |
+| `kibana_flags` | extra flags to pass `kibana` service | `""` |
 
 ## Debian
 
 | Variable | Default |
 |----------|---------|
-| `__kibana_package_name` | `kibana` |
-| `__kibana_config_dir` | `/etc` |
-| `__kibana_service_name` | `kibana` |
+| `__kibana_package` | `kibana` |
+| `__kibana_config_dir` | `/etc/kibana` |
+| `__kibana_service` | `kibana` |
 | `__kibana_user` | `kibana` |
 | `__kibana_group` | `kibana` |
 
@@ -67,9 +36,9 @@ FOO="bar"
 
 | Variable | Default |
 |----------|---------|
-| `__kibana_package_name` | `kibana45` |
-| `__kibana_config_dir` | `/usr/local/etc` |
-| `__kibana_service_name` | `kibana` |
+| `__kibana_package` | `textproc/kibana6` |
+| `__kibana_config_dir` | `/usr/local/etc/kibana` |
+| `__kibana_service` | `kibana` |
 | `__kibana_user` | `www` |
 | `__kibana_group` | `www` |
 
@@ -77,9 +46,9 @@ FOO="bar"
 
 | Variable | Default |
 |----------|---------|
-| `__kibana_package_name` | `kibana` |
-| `__kibana_config_dir` | `/etc` |
-| `__kibana_service_name` | `kibana` |
+| `__kibana_package` | `kibana` |
+| `__kibana_config_dir` | `/etc/kibana` |
+| `__kibana_service` | `kibana` |
 | `__kibana_user` | `_kibana` |
 | `__kibana_group` | `_kibana` |
 
@@ -87,32 +56,11 @@ FOO="bar"
 
 | Variable | Default |
 |----------|---------|
-| `__kibana_package_name` | `kibana` |
-| `__kibana_config_dir` | `/etc` |
-| `__kibana_service_name` | `kibana` |
+| `__kibana_package` | `kibana` |
+| `__kibana_config_dir` | `/etc/kibana` |
+| `__kibana_service` | `kibana` |
 | `__kibana_user` | `kibana` |
 | `__kibana_group` | `kibana` |
-
-### `kibana_default_redhat`
-
-A dict of variables and values in `/etc/sysconfig/kibana`.
-
-| Key | Value |
-|-----|-------|
-| variable name | the value |
-
-Given the following YAML,
-
-```yaml
-kibana_default_redhat:
- FOO: bar
-```
-
-The role generates `/etc/sysconfig/kibana`
-
-```
-FOO="bar"
-```
 
 # Dependencies
 
@@ -146,7 +94,7 @@ None
 # License
 
 ```
-Copyright (c) 2016 Tomoyuki Sakurai <tomoyukis@reallyenglish.com>
+Copyright (c) 2016 Tomoyuki Sakurai <y@trombik.org>
 
 Permission to use, copy, modify, and distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
@@ -163,4 +111,4 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 # Author Information
 
-Tomoyuki Sakurai <tomoyukis@reallyenglish.com>
+Tomoyuki Sakurai <y@trombik.org>
