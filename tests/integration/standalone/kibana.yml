@@ -11,18 +11,74 @@
       when: ansible_os_family == 'Debian'
     - role: trombik.redhat_repo
       when: ansible_os_family == 'RedHat'
+    - name: trombik.language_ruby
+    - name: trombik.fluentd
     - role: trombik.opendistroforelasticsearch
     - ansible-role-kibana
   vars:
     apt_repo_keys_to_add:
       - https://artifacts.elastic.co/GPG-KEY-elasticsearch
       - https://d3g5vo6xdbdb9a.cloudfront.net/GPG-KEY-opendistroforelasticsearch
+      - https://packages.treasuredata.com/GPG-KEY-td-agent
     apt_repo_to_add:
-      - ppa:openjdk-r/ppa
-      - deb [arch=amd64] https://d3g5vo6xdbdb9a.cloudfront.net/apt stable main
-      - deb https://artifacts.elastic.co/packages/oss-7.x/apt stable main
+      - "ppa:openjdk-r/ppa"
+      - "deb [arch=amd64] https://d3g5vo6xdbdb9a.cloudfront.net/apt stable main"
+      - "deb https://artifacts.elastic.co/packages/oss-7.x/apt stable main"
+      - "deb http://packages.treasuredata.com/3/ubuntu/{{ ansible_distribution_release }}/ {{ ansible_distribution_release }} contrib"
     apt_repo_enable_apt_transport_https: yes
 
+    os_language_ruby_package:
+      FreeBSD: lang/ruby26
+      OpenBSD: ruby%2.6
+      RedHat: "{{ __language_ruby_package }}"
+      Debian: "{{ __language_ruby_package }}"
+    language_ruby_package: "{{ os_language_ruby_package[ansible_os_family] }}"
+
+    # ________________________________________fluentd
+    os_fluentd_flags:
+      FreeBSD: "-p {{ fluentd_plugin_dir }}"
+      Debian: "-p {{ fluentd_plugin_dir }}"
+      RedHat: ""
+      OpenBSD: "--daemon /var/run/fluentd/fluentd.pid --config {{ fluentd_config_file }} -p {{ fluentd_plugin_dir }}"
+    fluentd_flags: "{{ os_fluentd_flags[ansible_os_family] }} --log {{ fluentd_log_file }}"
+    os_fluentd_bin:
+      OpenBSD: /usr/local/bin/fluentd26
+      FreeBSD: "{{ __fluentd_bin }}"
+      RedHat: "{{ __fluentd_bin }}"
+      Debian: "{{ __fluentd_bin }}"
+    fluentd_bin: "{{ os_fluentd_bin[ansible_os_family] }}"
+    fluentd_system_config: |
+      log_level debug
+      suppress_config_dump
+    fluentd_plugins_to_install:
+      - fluent-plugin-secure-forward
+    fluentd_configs:
+      syslog_forwarder:
+        # fluentd listens on 127.0.0.1:5140, and forwards logs to
+        # elasticsearch on 127.0.0.1:9200
+        enabled: true
+        config: |
+          <source>
+            @type syslog
+            port 5140
+            bind 127.0.0.1
+            tag syslog
+            time_format %b %d %H:%M:%S
+          </source>
+          <match syslog.**>
+            @type elasticsearch
+            @log_level debug
+            logstash_format true
+            hosts 127.0.0.1
+            port 9200
+            ssl_version TLSv1_2
+            with_transporter_log true
+            user admin
+            password admin
+            scheme https
+            ssl_verify false
+          </match>
+    # ________________________________________kibana
     os_kibana_package:
       Debian: opendistroforelasticsearch-kibana
       FreeBSD: "{{ __kibana_package }}"
