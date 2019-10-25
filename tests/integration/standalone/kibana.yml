@@ -34,6 +34,12 @@
       Debian: "{{ __language_ruby_package }}"
     language_ruby_package: "{{ os_language_ruby_package[ansible_os_family] }}"
 
+    # ________________________________________syslog
+    # enable UDP forwardning
+    os_syslog_conf:
+      Debian: /etc/rsyslog.d/50-default.conf
+      FreeBSD: /etc/syslog.d/udp_fowarding.conf
+
     # ________________________________________fluentd
     os_fluentd_flags:
       FreeBSD: "-p {{ fluentd_plugin_dir }}"
@@ -52,11 +58,12 @@
       suppress_config_dump
     fluentd_plugins_to_install:
       - fluent-plugin-secure-forward
+      - fluent-plugin-github-activities
     fluentd_configs:
-      syslog_forwarder:
+      000_input_syslog_forwarder:
         # fluentd listens on 127.0.0.1:5140, and forwards logs to
         # elasticsearch on 127.0.0.1:9200
-        enabled: true
+        enabled: yes
         config: |
           <source>
             @type syslog
@@ -65,10 +72,21 @@
             tag syslog
             time_format %b %d %H:%M:%S
           </source>
+      900_output_es:
+        enabled: yes
+        config: |
           <match syslog.**>
             @type elasticsearch
-            @log_level debug
-            logstash_format true
+            @log_level info
+            type_name fluentd
+            include_timestamp true
+            index_name syslog-%Y%m%d
+
+            # add fluentd routing tags to records
+            include_tag_key true
+            tag_key tag
+
+            # connection and transport settings
             hosts 127.0.0.1
             port 9200
             ssl_version TLSv1_2
@@ -77,7 +95,45 @@
             password admin
             scheme https
             ssl_verify false
+
+            # reconnect on error. the default is false
+            reconnect_on_error true
+            # reload the nodes addresses upon failure
+            reload_on_failure true
+
+            # ES templates
+            template_name kibana_template
+            template_file {{ fluentd_config_dir }}/es_templates/logstash_template.json
+
+            # when fluentd losts events, uncomment this
+            # https://github.com/uken/fluent-plugin-elasticsearch/issues/525
+            # reload_connections false
+            <buffer tag,time>
+              flush_mode interval
+
+              # the plugin keep complaining without increasing
+              # flush_thread_count to more than 1.
+              flush_thread_count 2
+
+              # use short fluash intarval for testing. in prod, you would need
+              # to increase the value
+              flush_interval 10s
+
+              # `%Y%m%d` in index_name requires this
+              timekey 1h
+            </buffer>
           </match>
+    fluentd_extra_files:
+      - path: "{{ fluentd_config_dir }}/es_templates/logstash_template.json"
+        state: present
+        # XXX for ansible 2.6.x or older, to_nice_json here is required to
+        # workaround a bug: https://github.com/ansible/ansible/issues/44897
+        # content: "{{ lookup('file', 'files/logstash_template.json') | to_nice_json }}"
+        #
+        # XXX for ansible 2.7.x or newer, you need `jinja2_native = true` in
+        # `[defaults] section of ansible.cfg and no `to_nice_json` filter here.
+        # https://docs.ansible.com/ansible/devel/reference_appendices/config.html#default-jinja2-native
+        content: "{{ lookup('file', 'files/logstash_template.json') }}"
     # ________________________________________kibana
     os_kibana_package:
       Debian: opendistroforelasticsearch-kibana
