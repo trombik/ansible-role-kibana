@@ -1,0 +1,53 @@
+{
+    "mappings": {
+        "dynamic_templates": [
+            {
+                "ip_address": {
+                    "mapping": {
+                        "type": "ip"
+                    },
+                    "match": "ip[46]?",
+                    "match_mapping_type": "string",
+                    "match_pattern": "regex"
+                }
+            },
+            {
+                "message_field": {
+                    "mapping": {
+                        "norms": false,
+                        "type": "text"
+                    },
+                    "match": "message",
+                    "match_mapping_type": "string"
+                }
+            }
+        ],
+        "properties": {
+            "@version": {
+                "type": "keyword"
+            },
+            "geoip": {
+                "dynamic": true,
+                "properties": {
+                    "continent_code": {
+                        "type": "keyword"
+                    },
+                    "country_name": {
+                        "type": "keyword"
+                    },
+                    "ip": {
+                        "type": "ip"
+                    },
+                    "location": {
+                        "type": "geo_point"
+                    }
+                },
+                "type": "object"
+            }
+        }
+    },
+    "settings": {
+        "index.refresh_interval": "5s"
+    },
+    "template": "logstash-*"
+}

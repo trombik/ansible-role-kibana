@@ -11,18 +11,412 @@
       when: ansible_os_family == 'Debian'
     - role: trombik.redhat_repo
       when: ansible_os_family == 'RedHat'
+    - name: trombik.nginx
+    - name: trombik.language_ruby
+    - name: trombik.fluentd
     - role: trombik.opendistroforelasticsearch
     - ansible-role-kibana
   vars:
     apt_repo_keys_to_add:
       - https://artifacts.elastic.co/GPG-KEY-elasticsearch
       - https://d3g5vo6xdbdb9a.cloudfront.net/GPG-KEY-opendistroforelasticsearch
+      - https://packages.treasuredata.com/GPG-KEY-td-agent
     apt_repo_to_add:
-      - ppa:openjdk-r/ppa
-      - deb [arch=amd64] https://d3g5vo6xdbdb9a.cloudfront.net/apt stable main
-      - deb https://artifacts.elastic.co/packages/oss-7.x/apt stable main
+      - "ppa:openjdk-r/ppa"
+      - "deb [arch=amd64] https://d3g5vo6xdbdb9a.cloudfront.net/apt stable main"
+      - "deb https://artifacts.elastic.co/packages/oss-7.x/apt stable main"
+      - "deb http://packages.treasuredata.com/3/ubuntu/{{ ansible_distribution_release }}/ {{ ansible_distribution_release }} contrib"
     apt_repo_enable_apt_transport_https: yes
 
+    os_language_ruby_package:
+      FreeBSD: lang/ruby26
+      OpenBSD: ruby%2.6
+      RedHat: "{{ __language_ruby_package }}"
+      Debian: "{{ __language_ruby_package }}"
+    language_ruby_package: "{{ os_language_ruby_package[ansible_os_family] }}"
+
+    # ________________________________________syslog
+    # enable UDP forwardning
+    os_syslog_conf:
+      Debian: /etc/rsyslog.d/50-default.conf
+      FreeBSD: /etc/syslog.d/udp_fowarding.conf
+
+    # ________________________________________fluentd
+
+    # add fluentd user to `adm` as it needs to read logs
+    fluentd_extra_groups: adm
+    os_fluentd_extra_packages:
+      FreeBSD: []
+      Debian:
+        - libgeoip-dev
+      OpenBSD: []
+      RedHat: []
+    fluentd_extra_packages: "{{ os_fluentd_extra_packages[ansible_os_family] }}"
+    os_fluentd_flags:
+      FreeBSD: "-p {{ fluentd_plugin_dir }}"
+      Debian: "-p {{ fluentd_plugin_dir }}"
+      RedHat: ""
+      OpenBSD: "--daemon /var/run/fluentd/fluentd.pid --config {{ fluentd_config_file }} -p {{ fluentd_plugin_dir }}"
+    fluentd_flags: "{{ os_fluentd_flags[ansible_os_family] }} --log {{ fluentd_log_file }}"
+    os_fluentd_bin:
+      OpenBSD: /usr/local/bin/fluentd26
+      FreeBSD: "{{ __fluentd_bin }}"
+      RedHat: "{{ __fluentd_bin }}"
+      Debian: "{{ __fluentd_bin }}"
+    fluentd_bin: "{{ os_fluentd_bin[ansible_os_family] }}"
+    fluentd_system_config: |
+      log_level debug
+      suppress_config_dump
+    fluentd_plugins_to_install:
+      - fluent-plugin-secure-forward
+      - fluent-plugin-github-activities
+      - fluent-plugin-record-modifier
+      - fluent-plugin-ua-parser
+      - fluent-plugin-geoip
+
+    # shared configuration for ES output plugin
+    project_fluentd_es_common_conf: |
+      @log_level info
+      type_name fluentd
+      # index_name syslog-%Y%m%d
+
+      # add fluentd routing tags to records
+      include_tag_key true
+      tag_key tag
+
+      # connection and transport settings
+      hosts 127.0.0.1
+      port 9200
+      ssl_version TLSv1_2
+      with_transporter_log true
+      user admin
+      password admin
+      scheme https
+      ssl_verify false
+
+      # reconnect on error. the default is false
+      reconnect_on_error true
+      # reload the nodes addresses upon failure
+      reload_on_failure true
+
+      # ES templates
+      template_overwrite
+      templates { "logstash": "{{ fluentd_config_dir }}/es_templates/logstash_template.json", "nginx_access": "{{ fluentd_config_dir }}/es_templates/nginx_access_template.json" }
+
+      # when fluentd losts events, uncomment this
+      # https://github.com/uken/fluent-plugin-elasticsearch/issues/525
+      # reload_connections false
+      <buffer tag,time>
+        flush_mode interval
+
+        # the plugin keep complaining without increasing
+        # flush_thread_count to more than 1.
+        flush_thread_count 2
+
+        # use short fluash intarval for testing. in prod, you would need
+        # to increase the value
+        flush_interval 10s
+
+        # `%Y%m%d` in index_name requires this
+        timekey 1h
+      </buffer>
+    fluentd_configs:
+      000_input_syslog_forwarder:
+        # fluentd listens on 127.0.0.1:5140, and forwards logs to
+        # elasticsearch on 127.0.0.1:9200
+        enabled: yes
+        config: |
+          <source>
+            @type syslog
+            port 5140
+            bind 127.0.0.1
+            tag syslog
+            time_format %b %d %H:%M:%S
+            @label @syslog
+          </source>
+          <label @syslog>
+            <match **>
+              @type elasticsearch
+              {{ project_fluentd_es_common_conf }}
+              index_name syslog-%Y%m%d
+              include_timestamp true
+              template_overwrite
+              templates { "logstash": "{{ fluentd_config_dir }}/es_templates/logstash_template.json" }
+            </match>
+          </label>
+      010_input_enginx_access_log:
+        enabled: yes
+        config: |
+          <source>
+            @type tail
+            tag nginx.access
+            path {{ nginx_access_log_file }}
+            pos_file {{ fluentd_log_dir }}/access.log.pos
+            @label @nginx_access
+
+            # emit unmatched lines when <parse> format is not matched for incoming logs
+            # the default is false.
+            emit_unmatched_lines true
+
+            # for log roatation
+            rotate_wait 5
+            <parse>
+              @type json
+            </parse>
+          </source>
+          <label @nginx_access>
+            <filter **>
+              @type record_modifier
+              remove_keys _dummy_1
+              remove_keys _dummy_2
+              <record>
+
+                # avoid empty record in IP data types
+                _dummy_1 ${if record['nginx']['http']['x_real_ip'].empty?; record['nginx']['http']['x_real_ip'] = '0.0.0.0'; end; nil}
+
+                # keep the first element in content_type. charset is not
+                # interesting.
+                #
+                # text/css; charset=utf-8
+                _dummy_2 ${record['nginx']['http']['response']['content_type'] = record['nginx']['http']['response']['content_type'].split(/\s*;\s*/).first; nil}
+
+                # XXX copy nginx.access.agent to a toplevel field `user_agent'
+                # because ua_parser does not support nested keys.
+                user_agent ${record['nginx']['access']['agent']}
+
+                # XXX same as `user_agent`. geoip plugin does not support
+                # nested keys
+                ip ${record['nginx']['access']['remote_ip']}
+              </record>
+            </filter>
+            <filter **>
+
+              # parse user_agent. parsed results can be found at record['ua']
+              @type ua_parser
+              key_name user_agent
+              out_key ua
+              delete_key true
+            </filter>
+
+            # parse IP address and append geoip field to the record.
+            <filter **>
+              @type geoip
+              geoip_lookup_keys ip
+              backend_library geoip2_c
+              <record>
+                country_name    ${country.names.en["ip"]}
+                latitude        ${location.latitude["ip"]}
+                longitude       ${location.longitude["ip"]}
+                country         ${country.iso_code["ip"]}
+                city            ${city.names.en["ip"]}
+              </record>
+              skip_adding_null_record true
+            </filter>
+            # move 'ua' and 'geoip' fields back to nginx.access
+            <filter **>
+              @type record_modifier
+              remove_keys _dummy_1, _dummy_2, _dummy_3, _dummy_4, _dummy_5, ua, city, longitude, latitude, country, country_name, ip
+              <record>
+                _dummy_1 ${ record['nginx']['access']['ua'] = record.key?('ua') ? record['ua'] : "" ; nil }
+                _dummy_2 ${ record['nginx']['access']['geoip'] = {} ; nil }
+                _dummy_3 ${ record['nginx']['access']['geoip']['city']         = record.key?('city') ? record['city'] : "N/A" ; nil }
+                _dummy_3 ${ record['nginx']['access']['geoip']['country']      = record.key?('country') ? record['country'] : "N/A" ; nil }
+                _dummy_4 ${ record['nginx']['access']['geoip']['country_name'] = record.key?('country_name') ? record['country_name'] : "N/A" ; nil }
+                _dummy_5 ${ record['nginx']['access']['geoip']['location']     = [ record['longitude'], record['latitude'] ] if record.key?('longitude') ; nil }
+              </record>
+            </filter>
+            # forward to ES
+            <match **>
+              @type elasticsearch
+              {{ project_fluentd_es_common_conf }}
+              index_name nginx-access-%Y%m%d
+              template_overwrite
+              templates { "nginx_access": "{{ fluentd_config_dir }}/es_templates/nginx_access_template.json" }
+            </match>
+          </label>
+      020_input_enginx_error_log:
+        enabled: yes
+        config: |
+          <source>
+            @type tail
+            tag nginx.error
+            path {{ nginx_error_log_file }}
+            pos_file {{ fluentd_log_dir }}/error.log.pos
+
+            # emit unmatched lines when <parse> format is not matched for incoming logs
+            # the default is false.
+            emit_unmatched_lines true
+
+            # for log roatation
+            rotate_wait 5
+
+            <parse>
+              @type regexp
+
+              # 2019/10/26 02:16:21 [emerg] 4947#4947: bind() to 0.0.0.0:80 failed (98: Address already in use)
+              expression /^(?<time>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?<log_level>\w+)\] (?<pid>\d+)#(?<tid>\d+): (?<message>.*)$/
+              time_key time
+              time_format %Y/%m/%d %H:%M:%S
+              keep_time_key true
+            </parse>
+          </source>
+          <label @nginx_error>
+            <match **>
+              @type elasticsearch
+              {{ project_fluentd_es_common_conf }}
+              index_name nginx-error-%Y%m%d
+            </match>
+          </label>
+      900_output_es:
+        enabled: yes
+        config: |
+    fluentd_extra_files:
+      - path: "{{ fluentd_config_dir }}/es_templates/logstash_template.json"
+        state: present
+        # XXX for ansible 2.6.x or older, to_nice_json here is required to
+        # workaround a bug: https://github.com/ansible/ansible/issues/44897
+        # content: "{{ lookup('file', 'files/logstash_template.json') | to_nice_json }}"
+        #
+        # XXX for ansible 2.7.x or newer, you need `jinja2_native = true` in
+        # `[defaults] section of ansible.cfg and no `to_nice_json` filter here.
+        # https://docs.ansible.com/ansible/devel/reference_appendices/config.html#default-jinja2-native
+        content: "{{ lookup('file', 'files/logstash_template.json') }}"
+      - path: "{{ fluentd_config_dir }}/es_templates/nginx_access_template.json"
+        state: present
+        content: "{{ lookup('file', 'files/nginx_access_template.json') }}"
+    # ________________________________________nginx
+    os_www_root_dir:
+      FreeBSD: /usr/local/www/nginx
+      OpenBSD: /var/www/htdocs
+      Debian: /var/www/html
+      RedHat: /usr/share/nginx/html
+    nginx_config: |
+      user {{ nginx_user }};
+      {% if ansible_os_family == 'Debian' or ansible_os_family == 'RedHat' %}
+      pid /run/nginx.pid;
+      {% endif %}
+      worker_processes 1;
+      error_log {{ nginx_error_log_file }};
+      events {
+        worker_connections 1024;
+      }
+      http {
+        upstream backend_kibana {
+          server 127.0.0.1:5601;
+          keepalive 60;
+        }
+        include {{ nginx_conf_dir }}/mime.types;
+        default_type application/octet-stream;
+        sendfile on;
+        gzip on;
+        keepalive_timeout 60;
+
+        # access.log in JSON for easier processing
+        log_format json escape=json
+            '{ '
+                '"nginx": { '
+                    '"access": { '
+                        '"remote_ip": "$remote_addr", '
+                        '"user_name": "$remote_user", '
+                        '"time": "$time_local", '
+                        '"method": "$request_method", '
+                        '"host": "$host", '
+                        '"url": "$request_uri", '
+                        '"http_protocol": "$server_protocol", '
+                        '"scheme": "$scheme", '
+                        '"response_code": "$status", '
+                        '"body_sent": { '
+                            '"bytes": "$body_bytes_sent" '
+                        '}, '
+                        '"referrer": "$http_referer", '
+                        '"agent": "$http_user_agent" '
+                    '}, '
+                    '"request": "$request", '
+                    '"connection": "$connection", '
+                    '"pipe": "$pipe", '
+                    '"connection_requests": "$connection_requests", '
+                    '"time": { '
+                        '"iso8601": "$time_iso8601", '
+                        '"msec": "$msec", '
+                        '"request": "$request_time" '
+                    '}, '
+                    '"http": { '
+                        '"response": { '
+                          '"content_type": "$sent_http_content_type", '
+                          '"connection": "$sent_http_connection", '
+                          '"content_encoding": "$sent_http_content_encoding", '
+                          '"content_length": "$sent_http_content_length", '
+                          '"transfer_encoding": "$sent_http_transfer_encoding", '
+                          '"cache_control:": "$sent_http_cache_control", '
+                          '"vary": "$sent_http_vary", '
+                          '"body_bytes_sent": "$body_bytes_sent", '
+                          '"bytes_sent": "$bytes_sent", '
+                          '"status": "$status"'
+                        '}, '
+                        '"request": { '
+                          '"accept": "$http_accept", '
+                          '"accept_encoding": "$http_accept_encoding", '
+                          '"accept_language": "$http_accept_language", '
+                          '"connection": "$http_connection", '
+                          '"content_length": "$http_content_length", '
+                          '"content_type": "$http_content_type", '
+                          '"dnt": "$http_dnt", '
+                          '"origin": "$http_origin", '
+                          '"method": "$request_method", '
+                          '"length": "$request_length", '
+                          '"referrer": "$http_referer", '
+                          '"id": "$request_id", '
+                          '"uri": "$request_uri"'
+                        '}, '
+                        '"x_forwarded_for": "$http_x_forwarded_for", '
+                        '"x_forwarded_proto": "$http_x_forwarded_proto", '
+                        '"x_real_ip": "$http_x_real_ip", '
+                        '"dnt": "$http_dnt", '
+                        '"x_scheme": "$http_x_scheme" '
+                    '}, '
+                    '"upstream": { '
+                        '"addr": "$upstream_addr", '
+                        '"status": "$upstream_status", '
+                        '"response_time": "$upstream_response_time", '
+                        '"connect_time": "$upstream_connect_time", '
+                        '"cache_status": "$upstream_cache_status", '
+                        '"header_time": "$upstream_header_time" '
+                    '} '
+                '} '
+            '}';
+        access_log {{ nginx_access_log_file }} json;
+
+        # WebSocket mapping
+        map $http_upgrade $connection_upgrade {
+          default upgrade;
+          '' close;
+        }
+        server {
+          listen 80;
+          server_name localhost;
+          location / {
+            proxy_pass http://backend_kibana;
+
+            # disable buffering of responses from the proxied server to keep
+            # synchronous interaction with kibana
+            proxy_buffering off;
+
+            # regular reverse proxy headers
+            proxy_set_header X-Real-IP  $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header Host $http_host;
+
+            # WebSocket proxying
+            # http://nginx.org/en/docs/http/websocket.html
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_cache_bypass $http_upgrade;
+          }
+        }
+      }
+
+    # ________________________________________kibana
     os_kibana_package:
       Debian: opendistroforelasticsearch-kibana
       FreeBSD: "{{ __kibana_package }}"

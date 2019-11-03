@@ -3,3 +3,6 @@
 - name: trombik.apt_repo
 - name: trombik.redhat_repo
 - name: trombik.x509_certificate
+- name: trombik.fluentd
+- name: trombik.language_ruby
+- name: trombik.nginx

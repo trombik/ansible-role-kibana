@@ -1,0 +1,75 @@
+{
+    "mappings": {
+        "dynamic_templates": [
+            {
+                "http_request_and_response": {
+                    "match_pattern": "regex",
+                    "match": "\\.(response|request)\\.",
+                    "unmatch": "(length||bytes|bytes_sent|sent)$",
+                    "mapping": {
+                        "type": "integer",
+                        "index": true
+                    }
+                }
+            },
+            {
+                "http_status_code": {
+                    "match_pattern": "regex",
+                    "match": "^nginx\\.(access\\.response_code|http\\.response\\.status)$",
+                    "mapping": {
+                        "type": "short"
+                    }
+                }
+            },
+            {
+                "ip_address": {
+                    "match_pattern": "regex",
+                    "match": ".*_(ip|ip4|ip6)$",
+                    "mapping": {
+                        "type": "ip"
+                    }
+                }
+            }
+        ],
+        "properties": {
+            "@version": {
+                "type": "keyword"
+            },
+            "nginx.access.geoip": {
+                "dynamic": true,
+                "type": "object",
+                "properties": {
+                    "city": {
+                        "type": "keyword"
+                    },
+                    "location": {
+                        "type": "geo_point"
+                    },
+                    "latitude": {
+                        "type": "half_float"
+                    },
+                    "longitude": {
+                        "type": "half_float"
+                    },
+                    "country": {
+                        "type": "keyword"
+                    },
+                    "country_name": {
+                        "type": "keyword"
+                    },
+                    "subdivision": {
+                        "type": "keyword"
+                    },
+                    "subdivision_name": {
+                        "type": "keyword"
+                    }
+                }
+            }
+        }
+    },
+    "settings": {
+        "index.refresh_interval": "5s"
+    },
+    "template": "nginx-access-*"
+}
+
