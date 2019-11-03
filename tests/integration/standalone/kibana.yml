@@ -45,6 +45,13 @@
 
     # add fluentd user to `adm` as it needs to read logs
     fluentd_extra_groups: adm
+    os_fluentd_extra_packages:
+      FreeBSD: []
+      Debian:
+        - libgeoip-dev
+      OpenBSD: []
+      RedHat: []
+    fluentd_extra_packages: "{{ os_fluentd_extra_packages[ansible_os_family] }}"
     os_fluentd_flags:
       FreeBSD: "-p {{ fluentd_plugin_dir }}"
       Debian: "-p {{ fluentd_plugin_dir }}"
@@ -63,10 +70,12 @@
     fluentd_plugins_to_install:
       - fluent-plugin-secure-forward
       - fluent-plugin-github-activities
+      - fluent-plugin-record-modifier
+      - fluent-plugin-ua-parser
+      - fluent-plugin-geoip
 
     # shared configuration for ES output plugin
     project_fluentd_es_common_conf: |
-      @type elasticsearch
       @log_level info
       type_name fluentd
       # index_name syslog-%Y%m%d
@@ -91,8 +100,8 @@
       reload_on_failure true
 
       # ES templates
-      template_name kibana_template
-      template_file {{ fluentd_config_dir }}/es_templates/logstash_template.json
+      template_overwrite
+      templates { "logstash": "{{ fluentd_config_dir }}/es_templates/logstash_template.json", "nginx_access": "{{ fluentd_config_dir }}/es_templates/nginx_access_template.json" }
 
       # when fluentd losts events, uncomment this
       # https://github.com/uken/fluent-plugin-elasticsearch/issues/525
@@ -123,7 +132,18 @@
             bind 127.0.0.1
             tag syslog
             time_format %b %d %H:%M:%S
+            @label @syslog
           </source>
+          <label @syslog>
+            <match **>
+              @type elasticsearch
+              {{ project_fluentd_es_common_conf }}
+              index_name syslog-%Y%m%d
+              include_timestamp true
+              template_overwrite
+              templates { "logstash": "{{ fluentd_config_dir }}/es_templates/logstash_template.json" }
+            </match>
+          </label>
       010_input_enginx_access_log:
         enabled: yes
         config: |
@@ -132,6 +152,7 @@
             tag nginx.access
             path {{ nginx_access_log_file }}
             pos_file {{ fluentd_log_dir }}/access.log.pos
+            @label @nginx_access
 
             # emit unmatched lines when <parse> format is not matched for incoming logs
             # the default is false.
@@ -143,6 +164,76 @@
               @type json
             </parse>
           </source>
+          <label @nginx_access>
+            <filter **>
+              @type record_modifier
+              remove_keys _dummy_1
+              remove_keys _dummy_2
+              <record>
+
+                # avoid empty record in IP data types
+                _dummy_1 ${if record['nginx']['http']['x_real_ip'].empty?; record['nginx']['http']['x_real_ip'] = '0.0.0.0'; end; nil}
+
+                # keep the first element in content_type. charset is not
+                # interesting.
+                #
+                # text/css; charset=utf-8
+                _dummy_2 ${record['nginx']['http']['response']['content_type'] = record['nginx']['http']['response']['content_type'].split(/\s*;\s*/).first; nil}
+
+                # XXX copy nginx.access.agent to a toplevel field `user_agent'
+                # because ua_parser does not support nested keys.
+                user_agent ${record['nginx']['access']['agent']}
+
+                # XXX same as `user_agent`. geoip plugin does not support
+                # nested keys
+                ip ${record['nginx']['access']['remote_ip']}
+              </record>
+            </filter>
+            <filter **>
+
+              # parse user_agent. parsed results can be found at record['ua']
+              @type ua_parser
+              key_name user_agent
+              out_key ua
+              delete_key true
+            </filter>
+
+            # parse IP address and append geoip field to the record.
+            <filter **>
+              @type geoip
+              geoip_lookup_keys ip
+              backend_library geoip2_c
+              <record>
+                country_name    ${country.names.en["ip"]}
+                latitude        ${location.latitude["ip"]}
+                longitude       ${location.longitude["ip"]}
+                country         ${country.iso_code["ip"]}
+                city            ${city.names.en["ip"]}
+              </record>
+              skip_adding_null_record true
+            </filter>
+            # move 'ua' and 'geoip' fields back to nginx.access
+            <filter **>
+              @type record_modifier
+              remove_keys _dummy_1, _dummy_2, _dummy_3, _dummy_4, _dummy_5, ua, city, longitude, latitude, country, country_name, ip
+              <record>
+                _dummy_1 ${ record['nginx']['access']['ua'] = record.key?('ua') ? record['ua'] : "" ; nil }
+                _dummy_2 ${ record['nginx']['access']['geoip'] = {} ; nil }
+                _dummy_3 ${ record['nginx']['access']['geoip']['city']         = record.key?('city') ? record['city'] : "N/A" ; nil }
+                _dummy_3 ${ record['nginx']['access']['geoip']['country']      = record.key?('country') ? record['country'] : "N/A" ; nil }
+                _dummy_4 ${ record['nginx']['access']['geoip']['country_name'] = record.key?('country_name') ? record['country_name'] : "N/A" ; nil }
+                _dummy_5 ${ record['nginx']['access']['geoip']['location']     = [ record['longitude'], record['latitude'] ] if record.key?('longitude') ; nil }
+              </record>
+            </filter>
+            # forward to ES
+            <match **>
+              @type elasticsearch
+              {{ project_fluentd_es_common_conf }}
+              index_name nginx-access-%Y%m%d
+              template_overwrite
+              templates { "nginx_access": "{{ fluentd_config_dir }}/es_templates/nginx_access_template.json" }
+            </match>
+          </label>
       020_input_enginx_error_log:
         enabled: yes
         config: |
@@ -169,22 +260,16 @@
               keep_time_key true
             </parse>
           </source>
+          <label @nginx_error>
+            <match **>
+              @type elasticsearch
+              {{ project_fluentd_es_common_conf }}
+              index_name nginx-error-%Y%m%d
+            </match>
+          </label>
       900_output_es:
         enabled: yes
         config: |
-          <match syslog.**>
-            {{ project_fluentd_es_common_conf }}
-            index_name syslog-%Y%m%d
-            include_timestamp true
-          </match>
-          <match nginx.access>
-            {{ project_fluentd_es_common_conf }}
-            index_name nginx-access-%Y%m%d
-          </match>
-          <match nginx.error>
-            {{ project_fluentd_es_common_conf }}
-            index_name nginx-error-%Y%m%d
-          </match>
     fluentd_extra_files:
       - path: "{{ fluentd_config_dir }}/es_templates/logstash_template.json"
         state: present
@@ -196,6 +281,9 @@
         # `[defaults] section of ansible.cfg and no `to_nice_json` filter here.
         # https://docs.ansible.com/ansible/devel/reference_appendices/config.html#default-jinja2-native
         content: "{{ lookup('file', 'files/logstash_template.json') }}"
+      - path: "{{ fluentd_config_dir }}/es_templates/nginx_access_template.json"
+        state: present
+        content: "{{ lookup('file', 'files/nginx_access_template.json') }}"
     # ________________________________________nginx
     os_www_root_dir:
       FreeBSD: /usr/local/www/nginx
@@ -273,7 +361,6 @@
                           '"content_length": "$http_content_length", '
                           '"content_type": "$http_content_type", '
                           '"dnt": "$http_dnt", '
-                          '"user_agent": "$http_user_agent", '
                           '"origin": "$http_origin", '
                           '"method": "$request_method", '
                           '"length": "$request_length", '
